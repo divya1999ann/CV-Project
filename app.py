@@ -1,48 +1,55 @@
 import streamlit as st
-import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
-from rasterio.io import MemoryFile
 
 st.set_page_config(page_title="EO NDVI Monitor", layout="centered")
 
-st.title("🌍 Satellite-Based Vegetation Monitoring")
-st.write("Compute and analyze NDVI from Sentinel-2 imagery")
+st.title("🌍 Sentinel-2 NDVI from NumPy file")
+st.write("Upload a multi-band Sentinel-2 NumPy file (`all_bands.npy`) and compute NDVI.")
 
-red_file = st.file_uploader("Upload Sentinel-2 Red Band (B04)", type=["tif"])
-nir_file = st.file_uploader("Upload Sentinel-2 NIR Band (B08)", type=["tif"])
+# File uploader
+uploaded_file = st.file_uploader("Upload all_bands.npy", type=["npy"])
 
-def load_band(uploaded_file):
-    with MemoryFile(uploaded_file.read()) as memfile:
-        with memfile.open() as dataset:
-            return dataset.read(1).astype("float32")
+def compute_ndvi_from_npy(file):
+    # Load multi-band array
+    arr = np.load(file)  # shape: (bands, height, width)
+    
+    # Sentinel-2 band order (common convention):
+    # B01, B02, B03, B04, B05, B06, B07, B08, B8A, B09, B10, B11, B12
+    red = arr[3].astype("float32")  # B04 (Red)
+    nir = arr[7].astype("float32")  # B08 (NIR)
 
-if red_file and nir_file:
-    if st.button("Run NDVI Analysis"):
-        red = load_band(red_file)
-        nir = load_band(nir_file)
+    # NDVI computation
+    ndvi = (nir - red) / (nir + red)
+    ndvi = np.clip(ndvi, -1, 1)
 
-        ndvi = (nir - red) / (nir + red)
-        ndvi = np.clip(ndvi, -1, 1)
+    # Gaussian smoothing (image processing)
+    ndvi_smoothed = gaussian_filter(ndvi, sigma=1)
 
-        ndvi_smoothed = gaussian_filter(ndvi, sigma=1)
+    return ndvi, ndvi_smoothed
 
-        fig1, ax1 = plt.subplots()
-        im1 = ax1.imshow(ndvi, cmap="RdYlGn")
-        ax1.set_title("Raw NDVI")
-        ax1.axis("off")
-        plt.colorbar(im1, ax=ax1, label="NDVI")
-        st.pyplot(fig1)
+if uploaded_file:
+    ndvi, ndvi_smooth = compute_ndvi_from_npy(uploaded_file)
 
-        fig2, ax2 = plt.subplots()
-        im2 = ax2.imshow(ndvi_smoothed, cmap="RdYlGn")
-        ax2.set_title("Smoothed NDVI (Gaussian Filter)")
-        ax2.axis("off")
-        plt.colorbar(im2, ax=ax2, label="NDVI")
-        st.pyplot(fig2)
+    # Plot raw NDVI
+    fig, ax = plt.subplots(figsize=(6, 6))
+    im = ax.imshow(ndvi, cmap="RdYlGn")
+    ax.set_title("Raw NDVI")
+    ax.axis("off")
+    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="NDVI")
+    st.pyplot(fig)
 
-        st.subheader("NDVI Summary (Smoothed)")
-        st.write(f"Mean NDVI: {np.nanmean(ndvi_smoothed):.2f}")
-        st.write(f"Min NDVI: {np.nanmin(ndvi_smoothed):.2f}")
-        st.write(f"Max NDVI: {np.nanmax(ndvi_smoothed):.2f}")
+    # Plot smoothed NDVI
+    fig2, ax2 = plt.subplots(figsize=(6, 6))
+    im2 = ax2.imshow(ndvi_smooth, cmap="RdYlGn")
+    ax2.set_title("Smoothed NDVI (Gaussian Filter)")
+    ax2.axis("off")
+    plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04, label="NDVI")
+    st.pyplot(fig2)
+
+    # NDVI summary stats
+    st.subheader("NDVI Summary (Smoothed)")
+    st.write(f"Mean NDVI: {np.nanmean(ndvi_smooth):.2f}")
+    st.write(f"Min NDVI: {np.nanmin(ndvi_smooth):.2f}")
+    st.write(f"Max NDVI: {np.nanmax(ndvi_smooth):.2f}")
